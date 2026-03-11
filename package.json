@@ -1,0 +1,37 @@
+{
+  "name": "amplifier",
+  "version": "0.1.0",
+  "description": "Amplifier Node.js SDK",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  },
+  "optionalDependencies": {
+    "@amplifier/sdk-darwin-arm64": "0.1.0",
+    "@amplifier/sdk-darwin-x64": "0.1.0",
+    "@amplifier/sdk-linux-x64": "0.1.0",
+    "@amplifier/sdk-linux-arm64": "0.1.0",
+    "@amplifier/sdk-win32-x64": "0.1.0"
+  }
+}

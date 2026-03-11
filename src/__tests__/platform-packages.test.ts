@@ -14,15 +14,15 @@ interface PlatformSpec {
 
 const PLATFORMS: PlatformSpec[] = [
   { name: '@amplifier/sdk-darwin-arm64', os: 'darwin', cpu: 'arm64', main: 'bin/amplifier',     description: 'Amplifier SDK binary for darwin-arm64' },
-  { name: '@amplifier/sdk-darwin-x64',   os: 'darwin', cpu: 'x64',   main: 'bin/amplifier',     description: 'Amplifier SDK binary for darwin-x64'   },
-  { name: '@amplifier/sdk-linux-x64',    os: 'linux',  cpu: 'x64',   main: 'bin/amplifier',     description: 'Amplifier SDK binary for linux-x64'    },
-  { name: '@amplifier/sdk-linux-arm64',  os: 'linux',  cpu: 'arm64', main: 'bin/amplifier',     description: 'Amplifier SDK binary for linux-arm64'  },
-  { name: '@amplifier/sdk-win32-x64',    os: 'win32',  cpu: 'x64',   main: 'bin/amplifier.exe', description: 'Amplifier SDK binary for win32-x64'    },
+  { name: '@amplifier/sdk-darwin-x64',   os: 'darwin', cpu: 'x64',   main: 'bin/amplifier',     description: 'Amplifier SDK binary for darwin-x64' },
+  { name: '@amplifier/sdk-linux-x64',    os: 'linux',  cpu: 'x64',   main: 'bin/amplifier',     description: 'Amplifier SDK binary for linux-x64' },
+  { name: '@amplifier/sdk-linux-arm64',  os: 'linux',  cpu: 'arm64', main: 'bin/amplifier',     description: 'Amplifier SDK binary for linux-arm64' },
+  { name: '@amplifier/sdk-win32-x64',    os: 'win32',  cpu: 'x64',   main: 'bin/amplifier.exe', description: 'Amplifier SDK binary for win32-x64' },
 ];
 
 describe('platform package skeletons', () => {
   for (const platform of PLATFORMS) {
-    const shortName = platform.name.replace('@amplifier/', '');
+    const shortName = platform.name.split('/')[1];
     const pkgDir = resolve(ROOT, 'packages', '@amplifier', shortName);
 
     describe(platform.name, () => {

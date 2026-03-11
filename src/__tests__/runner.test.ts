@@ -204,7 +204,7 @@ describe('runAmplifier', () => {
     expect((error as AmplifierProcessError).code).toBe('TIMEOUT');
   });
 
-  // Test 8: missing sessionId in JSON output throws AmplifierProcessError
+  // Test 7: missing sessionId in JSON output throws AmplifierProcessError
   it('throws AmplifierProcessError when sessionId is missing from JSON output', async () => {
     const proc = createFakeProcess();
     vi.mocked(spawn).mockReturnValueOnce(proc as any);

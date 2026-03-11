@@ -29,5 +29,8 @@
     "@amplifier/sdk-linux-x64": "0.1.0",
     "@amplifier/sdk-linux-arm64": "0.1.0",
     "@amplifier/sdk-win32-x64": "0.1.0"
-  }
+  },
+  "workspaces": [
+    "packages/@amplifier/*"
+  ]
 }

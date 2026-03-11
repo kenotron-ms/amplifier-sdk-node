@@ -21,6 +21,20 @@ export interface RunnerOptions {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Extract and parse the first JSON object from a string.
+ * Handles leading text such as "Bundle 'foundation' prepared successfully\n{...}".
+ */
+function extractJson(s: string): Record<string, unknown> | null {
+  const start = s.indexOf('{');
+  if (start === -1) return null;
+  try {
+    return JSON.parse(s.slice(start)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 /** Normalize a raw parsed JSON object (may use snake_case keys) into ResultMessage. */
 function normalizeResult(raw: Record<string, unknown>): ResultMessage {
   // Guard required fields: sessionId must be present in either form
@@ -121,15 +135,15 @@ export async function runAmplifier(
         return;
       }
 
-      // Parse JSON output
-      let parsed: Record<string, unknown>;
-      try {
-        parsed = JSON.parse(stdoutData) as Record<string, unknown>;
-      } catch {
+      // Parse JSON — try stdout first, fall back to stderr.
+      // Some amplifier versions write the JSON result to stderr alongside
+      // status lines like "Bundle 'foundation' prepared successfully".
+      const parsed = extractJson(stdoutData) ?? extractJson(stderrData);
+      if (parsed === null) {
         reject(
           new AmplifierProcessError(
             'Failed to parse Amplifier JSON output',
-            stdoutData,
+            stderrData,
           ),
         );
         return;

@@ -226,7 +226,60 @@ describe('runAmplifier', () => {
     expect((error as AmplifierProcessError).message).toContain('Missing sessionId');
   });
 
-  // Test 7: snake_case output fields are normalized to camelCase
+  // Test 8: JSON in stderr with leading status text (real amplifier CLI behavior)
+  it('parses JSON from stderr when stdout is empty and stderr has leading status text', async () => {
+    const proc = createFakeProcess();
+    vi.mocked(spawn).mockReturnValueOnce(proc as any);
+
+    const rawJson = JSON.stringify({
+      type: 'result',
+      status: 'success',
+      response: 'Quicksort is a divide-and-conquer algorithm.',
+      session_id: 'ef49b5c8-bbea-4b5b-b196-0e69f9ba5548',
+      bundle: 'bundle:foundation',
+      model: 'anthropic/claude-sonnet-4-6',
+      timestamp: '2026-03-11T21:06:36.013638+00:00',
+    });
+
+    const promise = runAmplifier(['run', '--output-format', 'json', 'hello'], {
+      binaryPath: BINARY_PATH,
+    });
+
+    // Real CLI behavior: stdout empty, stderr has status line + JSON
+    scheduleClose(proc, {
+      stdout: '',
+      stderr: `Bundle 'foundation' prepared successfully\n${rawJson}\n`,
+    });
+
+    const result = await promise;
+    expect(result.status).toBe('success');
+    expect(result.response).toBe('Quicksort is a divide-and-conquer algorithm.');
+    expect(result.sessionId).toBe('ef49b5c8-bbea-4b5b-b196-0e69f9ba5548');
+    expect(result.bundle).toBe('bundle:foundation');
+  });
+
+  // Test 9: JSON in stderr without leading text (plain stderr JSON)
+  it('parses JSON from stderr when stdout is empty and stderr is plain JSON', async () => {
+    const proc = createFakeProcess();
+    vi.mocked(spawn).mockReturnValueOnce(proc as any);
+
+    const rawJson = JSON.stringify({
+      type: 'result',
+      status: 'success',
+      session_id: 's1',
+      bundle: 'b',
+      model: 'm',
+      timestamp: 't',
+    });
+
+    const promise = runAmplifier(['run'], { binaryPath: BINARY_PATH });
+    scheduleClose(proc, { stdout: '', stderr: rawJson });
+
+    const result = await promise;
+    expect(result.sessionId).toBe('s1');
+  });
+
+  // Test 10: snake_case output fields are normalized to camelCase
   it('normalizes snake_case fields to camelCase in ResultMessage', async () => {
     const proc = createFakeProcess();
     vi.mocked(spawn).mockReturnValueOnce(proc as any);

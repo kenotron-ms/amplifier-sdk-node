@@ -1,6 +1,6 @@
 {
   "name": "amplifier-sdk",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Official Node.js SDK for Amplifier — call AI agents from your code with a typed TypeScript API",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -13,10 +13,12 @@
     }
   },
   "files": [
-    "dist/"
+    "dist/",
+    "scripts/"
   ],
   "scripts": {
     "build": "tsup",
+    "postinstall": "node scripts/postinstall.js",
     "prepublishOnly": "npm run build && npm test",
     "test": "vitest run",
     "test:watch": "vitest",

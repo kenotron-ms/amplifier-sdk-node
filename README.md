@@ -8,7 +8,9 @@ The official Node.js SDK for [Amplifier](https://github.com/amplifier-dev/amplif
 npm install amplifier-sdk
 ```
 
-You'll also need the Amplifier CLI installed. See [Requirements](#requirements).
+The Amplifier CLI is installed automatically during `npm install` — no separate setup needed.
+
+> **If auto-install fails** (rare, usually missing Python): see [Requirements](#requirements).
 
 ## Quick Start
 
@@ -223,7 +225,7 @@ For full type definitions, see the TypeScript types included with the package.
 ## Requirements
 
 - **Node.js 18** or later
-- **Amplifier CLI** installed and accessible (see [Configuration](#configuration))
+- **Amplifier CLI** — installed automatically by `npm install`. If auto-install fails, see [Configuration](#configuration) for manual options.
 
 ## License
 

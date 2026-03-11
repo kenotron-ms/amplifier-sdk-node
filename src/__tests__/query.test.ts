@@ -33,10 +33,8 @@ describe('query', () => {
     const gen = query('hello world');
     await gen.next(); // consume the single result
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      ['run', '--output-format', 'json', 'hello world'],
-      expect.anything(),
-    );
+    const [args] = vi.mocked(runAmplifier).mock.calls[0];
+    expect(args).toEqual(['run', '--output-format', 'json', 'hello world']);
   });
 
   // Test 2: adds --resume when sessionId is provided
@@ -105,7 +103,30 @@ describe('query', () => {
     );
   });
 
-  // Test 8: async iterator yields exactly one ResultMessage
+  // Test 8: combined — full args array with all options, prompt always last
+  it('builds exact full args array with prompt last when all options are provided', async () => {
+    const gen = query('my-prompt', {
+      sessionId: 'sess-123',
+      bundle: 'my-bundle',
+      provider: 'openai',
+      model: 'gpt-4o',
+      maxTokens: 2048,
+    });
+    await gen.next();
+
+    const [args] = vi.mocked(runAmplifier).mock.calls[0];
+    expect(args).toEqual([
+      'run', '--output-format', 'json',
+      '--resume', 'sess-123',
+      '--bundle', 'my-bundle',
+      '--provider', 'openai',
+      '--model', 'gpt-4o',
+      '--max-tokens', '2048',
+      'my-prompt',
+    ]);
+  });
+
+  // Test 9: async iterator yields exactly one ResultMessage
   it('yields exactly one ResultMessage', async () => {
     const results: ResultMessage[] = [];
     for await (const result of query('hello')) {

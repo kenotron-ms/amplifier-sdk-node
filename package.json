@@ -1,18 +1,44 @@
 {
-  "name": "amplifier",
+  "name": "amplifier-sdk",
   "version": "0.1.0",
+  "description": "Official Node.js SDK for Amplifier — call AI agents from your code with a typed TypeScript API",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "require": "./dist/index.js",
-      "import": "./dist/index.mjs"
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     }
   },
+  "files": [
+    "dist/"
+  ],
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "npm run build && npm test",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "amplifier",
+    "ai",
+    "agent",
+    "sdk",
+    "typescript",
+    "llm"
+  ],
+  "author": "Amplifier Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kenotron-ms/amplifier-sdk-node.git"
+  },
+  "homepage": "https://github.com/kenotron-ms/amplifier-sdk-node#readme",
+  "bugs": {
+    "url": "https://github.com/kenotron-ms/amplifier-sdk-node/issues"
   },
   "engines": {
     "node": ">=18.0.0"

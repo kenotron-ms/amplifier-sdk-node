@@ -67,7 +67,7 @@ export class AmplifierClient {
       }
     }
 
-    return runAmplifier(args, {
+    return await runAmplifier(args, {
       binaryPath: this.options.binaryPath,
     });
   }

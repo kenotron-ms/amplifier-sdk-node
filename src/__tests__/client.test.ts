@@ -81,9 +81,7 @@ describe('AmplifierClient', () => {
     const call = vi.mocked(runAmplifier).mock.calls[0];
     const args = call[0];
 
-    // Should include per-call model, not client model
-    expect(args).toContain('claude-3-sonnet');
-    // gpt-4 should not appear in args (per-call overrides)
+    // --model flag should be set to the per-call value, not the client-level value
     const modelIndex = args.indexOf('--model');
     expect(args[modelIndex + 1]).toBe('claude-3-sonnet');
   });

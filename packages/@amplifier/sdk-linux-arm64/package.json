@@ -1,0 +1,9 @@
+{
+  "name": "@amplifier/sdk-linux-arm64",
+  "version": "0.1.0",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "main": "bin/amplifier",
+  "files": ["bin/"]
+}

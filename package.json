@@ -1,10 +1,6 @@
 {
   "name": "amplifier",
   "version": "0.1.0",
-  "description": "Amplifier Node.js SDK",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
-  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

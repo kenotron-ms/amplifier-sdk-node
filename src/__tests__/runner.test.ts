@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import { Readable } from 'stream';
-import { runAmplifier } from '../runner';
+import { runAmplifier, _resetVersionChecked } from '../runner';
 import { AmplifierProcessError, AmplifierSessionError } from '../errors';
 
 vi.mock('child_process', () => ({
@@ -68,11 +68,14 @@ const BINARY_PATH = '/fake/amplifier';
 describe('runAmplifier', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetVersionChecked();
     process.env['AMPLIFIER_SKIP_VERSION_CHECK'] = '1';
   });
 
   afterEach(() => {
     delete process.env['AMPLIFIER_SKIP_VERSION_CHECK'];
+    // Guard: restore real timers even if a test left fake ones active
+    vi.useRealTimers();
   });
 
   // Test 1: happy path – resolves with normalized ResultMessage
@@ -184,25 +187,43 @@ describe('runAmplifier', () => {
   // Test 6: timeout kills the process and throws TIMEOUT ProcessError
   it('kills process and throws AmplifierProcessError with TIMEOUT code on timeout', async () => {
     vi.useFakeTimers();
-    try {
-      const proc = createFakeProcess();
-      vi.mocked(spawn).mockReturnValueOnce(proc as any);
+    const proc = createFakeProcess();
+    vi.mocked(spawn).mockReturnValueOnce(proc as any);
 
-      const promise = runAmplifier(['query'], { binaryPath: BINARY_PATH, timeoutMs: 5000 });
-      // Attach catch immediately so the rejection is always handled
-      const result = promise.catch((e: unknown) => e);
+    const promise = runAmplifier(['query'], { binaryPath: BINARY_PATH, timeoutMs: 5000 });
+    // Attach catch immediately so the rejection is always handled
+    const result = promise.catch((e: unknown) => e);
 
-      // Advance past the timeout; kill() will emit 'close' synchronously
-      await vi.advanceTimersByTimeAsync(5001);
+    // Advance past the timeout; kill() will emit 'close' synchronously
+    await vi.advanceTimersByTimeAsync(5001);
 
-      expect(proc.kill).toHaveBeenCalled();
+    expect(proc.kill).toHaveBeenCalled();
 
-      const error = await result;
-      expect(error).toBeInstanceOf(AmplifierProcessError);
-      expect((error as AmplifierProcessError).code).toBe('TIMEOUT');
-    } finally {
-      vi.useRealTimers();
-    }
+    const error = await result;
+    expect(error).toBeInstanceOf(AmplifierProcessError);
+    expect((error as AmplifierProcessError).code).toBe('TIMEOUT');
+  });
+
+  // Test 8: missing sessionId in JSON output throws AmplifierProcessError
+  it('throws AmplifierProcessError when sessionId is missing from JSON output', async () => {
+    const proc = createFakeProcess();
+    vi.mocked(spawn).mockReturnValueOnce(proc as any);
+
+    const rawJson = JSON.stringify({
+      type: 'result',
+      status: 'success',
+      response: 'Hello',
+      bundle: 'default',
+      model: 'gpt-4',
+      // deliberately omitting session_id / sessionId
+    });
+
+    const promise = runAmplifier(['query'], { binaryPath: BINARY_PATH });
+    scheduleClose(proc, { stdout: rawJson });
+
+    const error = await promise.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AmplifierProcessError);
+    expect((error as AmplifierProcessError).message).toContain('Missing sessionId');
   });
 
   // Test 7: snake_case output fields are normalized to camelCase

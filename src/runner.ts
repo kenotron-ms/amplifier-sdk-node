@@ -7,6 +7,11 @@ import type { ResultMessage } from './types';
 
 let versionChecked = false;
 
+/** Reset the one-time version-check flag — for use in tests only. */
+export function _resetVersionChecked(): void {
+  versionChecked = false;
+}
+
 // ─── Public options type ──────────────────────────────────────────────────────
 
 export interface RunnerOptions {
@@ -18,6 +23,15 @@ export interface RunnerOptions {
 
 /** Normalize a raw parsed JSON object (may use snake_case keys) into ResultMessage. */
 function normalizeResult(raw: Record<string, unknown>): ResultMessage {
+  // Guard required fields: sessionId must be present in either form
+  const sessionId = (raw['sessionId'] ?? raw['session_id']) as string | undefined;
+  if (!sessionId) {
+    throw new AmplifierProcessError(
+      'Missing sessionId in Amplifier output',
+      JSON.stringify(raw),
+    );
+  }
+
   return {
     type: raw['type'] as 'result',
     status: raw['status'] as 'success' | 'error',
@@ -25,7 +39,7 @@ function normalizeResult(raw: Record<string, unknown>): ResultMessage {
     error: raw['error'] as string | undefined,
     // Accept either camelCase (pass-through) or snake_case from the binary
     errorType: (raw['errorType'] ?? raw['error_type']) as string | undefined,
-    sessionId: (raw['sessionId'] ?? raw['session_id']) as string,
+    sessionId,
     bundle: raw['bundle'] as string,
     model: raw['model'] as string,
     timestamp: raw['timestamp'] as string,
@@ -121,7 +135,13 @@ export async function runAmplifier(
         return;
       }
 
-      const result = normalizeResult(parsed);
+      let result: ResultMessage;
+      try {
+        result = normalizeResult(parsed);
+      } catch (err) {
+        reject(err);
+        return;
+      }
 
       // Session-level error reported inside the JSON payload
       if (result.status === 'error') {

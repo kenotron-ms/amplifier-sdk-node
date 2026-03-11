@@ -104,6 +104,7 @@ describe('AmplifierClient', () => {
 
     expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
       expect.arrayContaining([
+        'recipe', 'run', '--output-format', 'json', '/path/to/recipe.yaml',
         '--context', 'env=production',
         '--context', 'version=42',
       ]),

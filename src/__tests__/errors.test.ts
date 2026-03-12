@@ -1,80 +1,92 @@
 import { describe, it, expect } from 'vitest';
 import {
-  AmplifierBinaryNotFoundError,
-  AmplifierProcessError,
-  AmplifierSessionError,
+  AmplifierError,
+  PythonNotFoundError,
+  FoundationNotInstalledError,
+  BridgeError,
+  BridgeTimeoutError,
+  BridgeCrashedError,
+  SessionError,
+  BundleLoadError,
+  BundleValidationError,
 } from '../errors';
 
-// ─── AmplifierBinaryNotFoundError (3 tests) ───────────────────────────────────
-
-describe('AmplifierBinaryNotFoundError', () => {
-  it('has correct name property', () => {
-    const err = new AmplifierBinaryNotFoundError();
-    expect(err.name).toBe('AmplifierBinaryNotFoundError');
+describe('Error hierarchy', () => {
+  it('all errors extend AmplifierError', () => {
+    expect(new PythonNotFoundError()).toBeInstanceOf(AmplifierError);
+    expect(new FoundationNotInstalledError()).toBeInstanceOf(AmplifierError);
+    expect(new BridgeError('x')).toBeInstanceOf(AmplifierError);
+    expect(new BridgeTimeoutError()).toBeInstanceOf(AmplifierError);
+    expect(new BridgeCrashedError('x')).toBeInstanceOf(AmplifierError);
+    expect(new SessionError('x')).toBeInstanceOf(AmplifierError);
+    expect(new BundleLoadError('x')).toBeInstanceOf(AmplifierError);
+    expect(new BundleValidationError('x', [], [])).toBeInstanceOf(AmplifierError);
   });
 
-  it('message contains actionable npm install amplifier instruction', () => {
-    const err = new AmplifierBinaryNotFoundError();
-    expect(err.message).toContain('npm install amplifier');
+  it('AmplifierError extends Error', () => {
+    expect(new AmplifierError('test')).toBeInstanceOf(Error);
   });
 
-  it('is an instance of Error', () => {
-    const err = new AmplifierBinaryNotFoundError();
-    expect(err).toBeInstanceOf(Error);
+  it('BridgeTimeoutError extends BridgeError', () => {
+    expect(new BridgeTimeoutError()).toBeInstanceOf(BridgeError);
+  });
+
+  it('BridgeCrashedError extends BridgeError', () => {
+    expect(new BridgeCrashedError('x')).toBeInstanceOf(BridgeError);
   });
 });
 
-// ─── AmplifierProcessError (6 tests) ─────────────────────────────────────────
+describe('PythonNotFoundError', () => {
+  it('has correct name and default message', () => {
+    const err = new PythonNotFoundError();
+    expect(err.name).toBe('PythonNotFoundError');
+    expect(err.message).toContain('Python 3.11+');
+  });
+});
 
-describe('AmplifierProcessError', () => {
-  it('has correct name property', () => {
-    const err = new AmplifierProcessError('something went wrong', 'stderr output');
-    expect(err.name).toBe('AmplifierProcessError');
+describe('BridgeError', () => {
+  it('stores code', () => {
+    const err = new BridgeError('fail', 'ERR_CODE');
+    expect(err.code).toBe('ERR_CODE');
   });
 
-  it('stores the message', () => {
-    const err = new AmplifierProcessError('process failed', 'some stderr');
-    expect(err.message).toBe('process failed');
-  });
-
-  it('stores stderr', () => {
-    const err = new AmplifierProcessError('failed', 'error detail from stderr');
-    expect(err.stderr).toBe('error detail from stderr');
-  });
-
-  it('stores optional exit code when provided', () => {
-    const err = new AmplifierProcessError('failed', 'stderr text', '1');
-    expect(err.code).toBe('1');
-  });
-
-  it('leaves code undefined when not provided', () => {
-    const err = new AmplifierProcessError('failed', 'stderr text');
+  it('code is undefined when not provided', () => {
+    const err = new BridgeError('fail');
     expect(err.code).toBeUndefined();
   });
+});
 
-  it('is an instance of Error', () => {
-    const err = new AmplifierProcessError('failed', 'stderr');
-    expect(err).toBeInstanceOf(Error);
+describe('BridgeTimeoutError', () => {
+  it('has TIMEOUT code', () => {
+    const err = new BridgeTimeoutError();
+    expect(err.code).toBe('TIMEOUT');
+  });
+
+  it('includes timeout duration in message when provided', () => {
+    const err = new BridgeTimeoutError('timed out', 5000);
+    expect(err.message).toContain('5000ms');
   });
 });
 
-// ─── AmplifierSessionError (3 tests) ─────────────────────────────────────────
-
-describe('AmplifierSessionError', () => {
-  it('has correct name property', () => {
-    const err = new AmplifierSessionError('session error');
-    expect(err.name).toBe('AmplifierSessionError');
+describe('BridgeCrashedError', () => {
+  it('stores stderr', () => {
+    const err = new BridgeCrashedError('crashed', 'traceback...');
+    expect(err.stderr).toBe('traceback...');
+    expect(err.code).toBe('CRASHED');
   });
+});
 
-  it('stores message and optional errorType, and is an instance of Error', () => {
-    const err = new AmplifierSessionError('session failed', 'timeout');
-    expect(err.message).toBe('session failed');
-    expect(err.errorType).toBe('timeout');
-    expect(err).toBeInstanceOf(Error);
+describe('SessionError', () => {
+  it('stores sessionId', () => {
+    const err = new SessionError('failed', 'sess-123');
+    expect(err.sessionId).toBe('sess-123');
   });
+});
 
-  it('leaves errorType undefined when not provided', () => {
-    const err = new AmplifierSessionError('session failed');
-    expect(err.errorType).toBeUndefined();
+describe('BundleValidationError', () => {
+  it('stores errors and warnings arrays', () => {
+    const err = new BundleValidationError('invalid', ['err1'], ['warn1', 'warn2']);
+    expect(err.errors).toEqual(['err1']);
+    expect(err.warnings).toEqual(['warn1', 'warn2']);
   });
 });

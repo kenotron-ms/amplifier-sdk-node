@@ -1,116 +1,139 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { Session } from '../session';
-import type { ResultMessage } from '../types';
-
-vi.mock('../runner', () => ({
-  runAmplifier: vi.fn(),
-}));
-
-import { runAmplifier } from '../runner';
-
-// ─── Fixtures ────────────────────────────────────────────────────────────────
-
-const MOCK_RESULT: ResultMessage = {
-  type: 'result',
-  status: 'success',
-  response: 'Hello from Amplifier',
-  sessionId: 'sess-abc',
-  bundle: 'default',
-  model: 'gpt-4',
-  timestamp: '2024-01-01T00:00:00Z',
-};
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
+import { MockTransport } from './mock-transport';
+import type { Message } from '../types';
 
 describe('Session', () => {
+  let transport: MockTransport;
+
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(runAmplifier).mockResolvedValue(MOCK_RESULT);
+    transport = new MockTransport();
+    transport.mockResponse('session.execute', {
+      response: 'Hello there',
+      sessionId: 'sess-1',
+    });
+    transport.mockResponse('session.interrupt', null);
+    transport.mockResponse('session.close', null);
   });
 
-  // Test 1: stores sessionId
-  it('stores sessionId as a readable property', () => {
-    const session = new Session('sess-123', {});
-    expect(session.sessionId).toBe('sess-123');
+  it('has id and handle', () => {
+    const session = new Session('sess-1', 'session:1', transport);
+    expect(session.id).toBe('sess-1');
   });
 
-  // Test 2: passes --resume with sessionId on every prompt
-  it('passes --resume <sessionId> on every prompt call', async () => {
-    const session = new Session('sess-123', {});
-    await session.prompt('hello');
+  it('query sends session.execute and yields result', async () => {
+    const session = new Session('sess-1', 'session:1', transport);
+    const messages: Message[] = [];
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      expect.arrayContaining(['--resume', 'sess-123']),
-      expect.anything(),
-    );
+    for await (const msg of session.query('Hello')) {
+      messages.push(msg);
+    }
+
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    const result = messages.find((m) => m.type === 'result');
+    expect(result).toBeDefined();
+    expect(result!.type).toBe('result');
+    if (result!.type === 'result') {
+      expect(result!.response).toBe('Hello there');
+    }
+
+    const req = transport.requests.find((r) => r.method === 'session.execute');
+    expect(req?.params).toEqual({ handle: 'session:1', prompt: 'Hello' });
   });
 
-  // Test 3: forwards client-level bundle option
-  it('forwards client-level bundle option as --bundle', async () => {
-    const session = new Session('sess-123', { bundle: 'my-bundle' });
-    await session.prompt('hello');
+  it('query yields streaming events before result', async () => {
+    // Emit notifications before the execute resolves
+    const session = new Session('sess-1', 'session:1', transport);
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      expect.arrayContaining(['--bundle', 'my-bundle']),
-      expect.anything(),
-    );
+    // Override transport to emit events during execute
+    const originalRequest = transport.request.bind(transport);
+    transport.request = async (method, params) => {
+      if (method === 'session.execute') {
+        // Simulate streaming events
+        setTimeout(() => {
+          transport.emitNotification('session.event', {
+            sessionId: 'sess-1',
+            type: 'text',
+            content: 'Hi',
+          });
+          transport.emitNotification('session.event', {
+            sessionId: 'sess-1',
+            type: 'tool_use',
+            id: 't1',
+            name: 'bash',
+            input: { command: 'echo hello' },
+          });
+        }, 10);
+
+        // Return final result after events
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({ response: 'Done', sessionId: 'sess-1' });
+          }, 50);
+        });
+      }
+      return originalRequest(method, params);
+    };
+
+    const messages: Message[] = [];
+    for await (const msg of session.query('Do something')) {
+      messages.push(msg);
+    }
+
+    const textMsgs = messages.filter((m) => m.type === 'text');
+    const toolMsgs = messages.filter((m) => m.type === 'tool_use');
+    expect(textMsgs.length).toBeGreaterThanOrEqual(1);
+    expect(toolMsgs.length).toBeGreaterThanOrEqual(1);
   });
 
-  // Test 4: forwards provider
-  it('forwards client-level provider option as --provider', async () => {
-    const session = new Session('sess-123', { provider: 'openai' });
-    await session.prompt('hello');
+  it('close sends session.close request', async () => {
+    const session = new Session('sess-1', 'session:1', transport);
+    await session.close();
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      expect.arrayContaining(['--provider', 'openai']),
-      expect.anything(),
-    );
+    const req = transport.requests.find((r) => r.method === 'session.close');
+    expect(req?.params).toEqual({ handle: 'session:1' });
   });
 
-  // Test 5: forwards model
-  it('forwards client-level model option as --model', async () => {
-    const session = new Session('sess-123', { model: 'gpt-4o' });
-    await session.prompt('hello');
+  it('interrupt sends session.interrupt request', async () => {
+    const session = new Session('sess-1', 'session:1', transport);
+    await session.interrupt();
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      expect.arrayContaining(['--model', 'gpt-4o']),
-      expect.anything(),
-    );
+    const req = transport.requests.find((r) => r.method === 'session.interrupt');
+    expect(req?.params).toEqual({ handle: 'session:1' });
   });
 
-  // Test 6: forwards binaryPath
-  it('forwards client-level binaryPath to runAmplifier options', async () => {
-    const session = new Session('sess-123', { binaryPath: '/usr/bin/amplifier' });
-    await session.prompt('hello');
+  it('ignores notifications for other sessions', async () => {
+    const session = new Session('sess-1', 'session:1', transport);
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ binaryPath: '/usr/bin/amplifier' }),
-    );
-  });
+    const originalRequest = transport.request.bind(transport);
+    transport.request = async (method, params) => {
+      if (method === 'session.execute') {
+        setTimeout(() => {
+          // Event for a different session — should be ignored
+          transport.emitNotification('session.event', {
+            sessionId: 'sess-OTHER',
+            type: 'text',
+            content: 'wrong session',
+          });
+          transport.emitNotification('session.event', {
+            sessionId: 'sess-1',
+            type: 'text',
+            content: 'right session',
+          });
+        }, 10);
+        return new Promise((resolve) => {
+          setTimeout(() => resolve({ response: 'ok', sessionId: 'sess-1' }), 50);
+        });
+      }
+      return originalRequest(method, params);
+    };
 
-  // Test 7: forwards per-call timeoutMs
-  it('forwards per-call timeoutMs to runAmplifier options', async () => {
-    const session = new Session('sess-123', {});
-    await session.prompt('hello', { timeoutMs: 30000 });
+    const messages: Message[] = [];
+    for await (const msg of session.query('test')) {
+      messages.push(msg);
+    }
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ timeoutMs: 30000 }),
-    );
-  });
-
-  // Test 8: returns SessionResult with sessionId
-  it('returns a SessionResult that includes the sessionId', async () => {
-    const session = new Session('sess-123', {});
-    const result = await session.prompt('hello');
-
-    expect(result).toMatchObject({ ...MOCK_RESULT, sessionId: 'sess-123' });
-  });
-
-  // Test 9: close() does not throw
-  it('close() does not throw', () => {
-    const session = new Session('sess-123', {});
-    expect(() => session.close()).not.toThrow();
+    const textMsgs = messages.filter((m) => m.type === 'text');
+    expect(textMsgs.every((m) => m.type === 'text' && m.content !== 'wrong session')).toBe(true);
   });
 });

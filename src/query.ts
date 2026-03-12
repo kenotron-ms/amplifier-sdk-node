@@ -12,6 +12,7 @@ export async function* query(
     hooks: options?.hooks,
     onApproval: options?.onApproval,
     cwd: options?.cwd,
+    pythonPath: options?.pythonPath,
   });
 
   try {

@@ -51,6 +51,7 @@ export interface QueryOptions {
   onApproval?: ApprovalHandler;
   timeoutMs?: number;
   cwd?: string;
+  pythonPath?: string;
 }
 
 export interface AmplifierClientOptions {

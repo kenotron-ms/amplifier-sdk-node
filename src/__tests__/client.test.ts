@@ -1,125 +1,179 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { AmplifierClient } from '../client';
-import type { ResultMessage } from '../types';
-
-vi.mock('../runner', () => ({
-  runAmplifier: vi.fn(),
-}));
-
-import { runAmplifier } from '../runner';
-
-// ─── Fixtures ────────────────────────────────────────────────────────────────
-
-const MOCK_RESULT: ResultMessage = {
-  type: 'result',
-  status: 'success',
-  response: 'Hello from Amplifier',
-  sessionId: 'sess-abc',
-  bundle: 'default',
-  model: 'gpt-4',
-  timestamp: '2024-01-01T00:00:00Z',
-};
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
+import { MockTransport } from './mock-transport';
 
 describe('AmplifierClient', () => {
+  let transport: MockTransport;
+
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(runAmplifier).mockResolvedValue(MOCK_RESULT);
+    transport = new MockTransport();
+    // Default mock responses
+    transport.mockResponse('bridge.ping', { status: 'ok' });
+    transport.mockResponse('session.create', { handle: 'session:1', sessionId: 'uuid-1' });
+    transport.mockResponse('session.close', null);
+    transport.mockResponse('bridge.close', null);
   });
 
-  // Test 1: createSession calls runAmplifier with base args and prompt
-  it('createSession calls runAmplifier with correct base args and prompt', async () => {
-    const client = new AmplifierClient();
-    await client.createSession('hello world');
+  it('lazy-starts transport on first API call', async () => {
+    const client = new AmplifierClient({ transport });
+    expect(transport.isRunning).toBe(false);
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      ['run', '--output-format', 'json', 'hello world'],
-      expect.anything(),
-    );
+    transport.mockResponse('bundle.load', { handle: 'bundle:1', name: 'test' });
+    await client.loadBundle('test-source');
+
+    expect(transport.isRunning).toBe(true);
   });
 
-  // Test 2: createSession returns a Session with the correct sessionId
-  it('createSession returns a Session with the correct sessionId', async () => {
-    const client = new AmplifierClient();
-    const session = await client.createSession('hello');
+  it('loadBundle sends bundle.load request', async () => {
+    const client = new AmplifierClient({ transport });
+    transport.mockResponse('bundle.load', { handle: 'bundle:1', name: 'my-bundle' });
 
-    expect(session.sessionId).toBe('sess-abc');
+    const handle = await client.loadBundle('git+https://example.com/bundle');
+    expect(handle._handle).toBe('bundle:1');
+    expect(handle.name).toBe('my-bundle');
+
+    const req = transport.requests.find((r) => r.method === 'bundle.load');
+    expect(req?.params).toEqual({ source: 'git+https://example.com/bundle' });
   });
 
-  // Test 3: createSession forwards client-level bundle, provider, model as CLI args
-  it('createSession forwards client-level options as CLI args', async () => {
+  it('prepareBundle sends bundle.prepare request', async () => {
+    const client = new AmplifierClient({ transport });
+    transport.mockResponse('bundle.load', { handle: 'bundle:1' });
+    transport.mockResponse('bundle.prepare', { handle: 'prepared:1' });
+
+    const bundle = await client.loadBundle('test');
+    const prepared = await client.prepareBundle(bundle);
+
+    expect(prepared._handle).toBe('prepared:1');
+    const req = transport.requests.find((r) => r.method === 'bundle.prepare');
+    expect(req?.params).toEqual({ handle: 'bundle:1' });
+  });
+
+  it('composeBundle sends bundle.compose with base and overlays', async () => {
+    const client = new AmplifierClient({ transport });
+    transport.mockResponse('bundle.load', { handle: 'bundle:1' });
+    transport.mockResponseQueue('bundle.load', [
+      { handle: 'bundle:1' },
+      { handle: 'bundle:2' },
+    ]);
+    transport.mockResponse('bundle.compose', { handle: 'bundle:3', name: 'composed' });
+
+    const base = await client.loadBundle('base');
+    const overlay = await client.loadBundle('overlay');
+    const composed = await client.composeBundle(base, overlay);
+
+    expect(composed._handle).toBe('bundle:3');
+    const req = transport.requests.find((r) => r.method === 'bundle.compose');
+    expect(req?.params).toEqual({ base: 'bundle:1', overlays: ['bundle:2'] });
+  });
+
+  it('createSession with no args sends session.create', async () => {
+    const client = new AmplifierClient({ transport });
+    const session = await client.createSession();
+
+    expect(session.id).toBe('uuid-1');
+    const req = transport.requests.find((r) => r.method === 'session.create');
+    expect(req).toBeDefined();
+  });
+
+  it('createSession with PreparedBundleHandle passes handle', async () => {
+    const client = new AmplifierClient({ transport });
+    transport.mockResponse('bundle.load', { handle: 'bundle:1' });
+    transport.mockResponse('bundle.prepare', { handle: 'prepared:1' });
+
+    const bundle = await client.loadBundle('test');
+    const prepared = await client.prepareBundle(bundle);
+    await client.createSession(prepared);
+
+    const req = transport.requests.find((r) => r.method === 'session.create');
+    expect(req?.params?.['handle']).toBe('prepared:1');
+  });
+
+  it('createSession auto-loads client-level bundle', async () => {
+    transport.mockResponse('bundle.load', { handle: 'bundle:1', name: 'foundation' });
+    transport.mockResponse('bundle.prepare', { handle: 'prepared:1' });
+
+    const client = new AmplifierClient({ bundle: 'foundation', transport });
+    await client.createSession();
+
+    const loadReq = transport.requests.find((r) => r.method === 'bundle.load');
+    expect(loadReq?.params?.['source']).toBe('foundation');
+    const createReq = transport.requests.find((r) => r.method === 'session.create');
+    expect(createReq?.params?.['handle']).toBe('prepared:1');
+  });
+
+  it('createSession forwards provider and model from client options', async () => {
     const client = new AmplifierClient({
-      bundle: 'my-bundle',
-      provider: 'openai',
-      model: 'gpt-4o',
+      provider: 'anthropic',
+      model: 'claude-3',
+      transport,
     });
-    await client.createSession('hello');
+    await client.createSession();
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      expect.arrayContaining(['--bundle', 'my-bundle', '--provider', 'openai', '--model', 'gpt-4o']),
-      expect.anything(),
-    );
+    const req = transport.requests.find((r) => r.method === 'session.create');
+    expect(req?.params?.['provider']).toBe('anthropic');
+    expect(req?.params?.['model']).toBe('claude-3');
   });
 
-  // Test 4: createSession forwards binaryPath to runAmplifier options
-  it('createSession forwards binaryPath to runAmplifier options', async () => {
-    const client = new AmplifierClient({ binaryPath: '/usr/local/bin/amplifier' });
-    await client.createSession('hello');
+  it('close shuts down transport', async () => {
+    const client = new AmplifierClient({ transport });
+    await client.createSession(); // starts transport
+    expect(transport.isRunning).toBe(true);
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ binaryPath: '/usr/local/bin/amplifier' }),
-    );
+    await client.close();
+    expect(transport.isRunning).toBe(false);
   });
 
-  // Test 5: createSession per-call model overrides client-level model
-  it('createSession per-call model overrides client-level model', async () => {
-    const client = new AmplifierClient({ model: 'gpt-4' });
-    await client.createSession('hello', { model: 'claude-3-sonnet' });
-
-    const call = vi.mocked(runAmplifier).mock.calls[0];
-    const args = call[0];
-
-    // --model flag should be set to the per-call value, not the client-level value
-    const modelIndex = args.indexOf('--model');
-    expect(args[modelIndex + 1]).toBe('claude-3-sonnet');
+  it('close is safe to call when not started', async () => {
+    const client = new AmplifierClient({ transport });
+    await expect(client.close()).resolves.toBeUndefined();
   });
 
-  // Test 6: runRecipe calls runAmplifier with correct base args
-  it('runRecipe calls runAmplifier with recipe run args and path', async () => {
-    const client = new AmplifierClient();
-    await client.runRecipe('/path/to/recipe.yaml');
+  it('registers hook handlers for reverse calls', async () => {
+    let hookCalled = false;
+    const client = new AmplifierClient({
+      transport,
+      hooks: {
+        preToolUse: [
+          {
+            handler: async (input) => {
+              hookCalled = true;
+              return { action: 'allow' };
+            },
+          },
+        ],
+      },
+    });
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      ['recipe', 'run', '--output-format', 'json', '/path/to/recipe.yaml'],
-      expect.anything(),
-    );
+    await client.createSession(); // triggers start, which registers handlers
+
+    const result = await transport.emitReverseRequest('hook.preToolUse', {
+      toolName: 'bash',
+      toolInput: { command: 'ls' },
+    });
+
+    expect(hookCalled).toBe(true);
+    expect(result).toEqual({ action: 'allow' });
   });
 
-  // Test 7: runRecipe appends context entries as --context key=value pairs
-  it('runRecipe appends context as --context key=value pairs', async () => {
-    const client = new AmplifierClient();
-    await client.runRecipe('/path/to/recipe.yaml', { env: 'production', version: 42 });
+  it('registers approval handler for reverse calls', async () => {
+    const client = new AmplifierClient({
+      transport,
+      onApproval: async (req) => req.toolName === 'safe_tool',
+    });
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        'recipe', 'run', '--output-format', 'json', '/path/to/recipe.yaml',
-        '--context', 'env=production',
-        '--context', 'version=42',
-      ]),
-      expect.anything(),
-    );
-  });
+    await client.createSession();
 
-  // Test 8: install calls runAmplifier with bundle add args
-  it('install calls runAmplifier with bundle add <url>', async () => {
-    const client = new AmplifierClient();
-    await client.install('https://example.com/bundle');
+    const result = await transport.emitReverseRequest('approval.request', {
+      toolName: 'safe_tool',
+      toolInput: {},
+    });
+    expect(result).toEqual({ approved: true });
 
-    expect(vi.mocked(runAmplifier)).toHaveBeenCalledWith(
-      ['bundle', 'add', 'https://example.com/bundle'],
-      expect.anything(),
-    );
+    const result2 = await transport.emitReverseRequest('approval.request', {
+      toolName: 'dangerous_tool',
+      toolInput: {},
+    });
+    expect(result2).toEqual({ approved: false });
   });
 });

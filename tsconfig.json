@@ -4,6 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    "skipLibCheck": true,
     "noEmit": true,   // tsup handles actual emit; outDir kept for IDE/tooling awareness
     "rootDir": "src",
     "outDir": "dist"

@@ -1,119 +1,120 @@
 #!/usr/bin/env node
 /**
- * postinstall.js — auto-bootstrap the Amplifier CLI after npm install.
+ * postinstall.js — check prerequisites for the amplifier-sdk Python bridge.
  *
- * Priority:
- *   1. Already on PATH or AMPLIFIER_BINARY env → nothing to do
- *   2. uv available → uv tool install amplifier  (recommended, manages Python too)
- *   3. pip3 / pip available → pip install amplifier-core
- *   4. Nothing found → print friendly instructions
+ * Checks:
+ *   1. Python >= 3.11 is available
+ *   2. amplifier-foundation is importable
+ *   3. amplifier-core is importable
+ *   4. git is available (needed for module source resolution)
  *
- * This script NEVER exits non-zero. A failed bootstrap is not a failed install.
+ * This script NEVER exits non-zero. A missing prereq is a warning, not a failure.
  * Set AMPLIFIER_SKIP_POSTINSTALL=1 to suppress it entirely (useful in CI).
  */
 
 'use strict';
 
-const { execFileSync, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 
-const BOLD  = '\x1b[1m';
+const BOLD = '\x1b[1m';
 const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
+const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
 const PREFIX = `${BOLD}amplifier-sdk${RESET}`;
 
-function log(msg)  { console.log(`${PREFIX}: ${msg}`); }
-function ok(msg)   { console.log(`${PREFIX}: ${GREEN}✓${RESET} ${msg}`); }
+function ok(msg) { console.log(`${PREFIX}: ${GREEN}\u2713${RESET} ${msg}`); }
 function warn(msg) { console.log(`${PREFIX}: ${YELLOW}!${RESET} ${msg}`); }
+function fail(msg) { console.log(`${PREFIX}: ${RED}\u2717${RESET} ${msg}`); }
 
-/** Check if a command is available, return true/false. */
-function available(cmd) {
+function checkCommand(cmd, args, label) {
   try {
-    spawnSync(cmd, ['--version'], { stdio: 'pipe', timeout: 8000 });
-    return true;
+    const result = spawnSync(cmd, args, { stdio: 'pipe', timeout: 8000 });
+    if (result.status === 0) {
+      const output = (result.stdout || '').toString().trim();
+      ok(`${label}: ${output || 'found'}`);
+      return { success: true, output };
+    }
+    return { success: false, output: '' };
+  } catch {
+    return { success: false, output: '' };
+  }
+}
+
+function checkPythonImport(pythonCmd, moduleName) {
+  try {
+    const result = spawnSync(
+      pythonCmd,
+      ['-c', `import ${moduleName}; print('ok')`],
+      { stdio: 'pipe', timeout: 15000 },
+    );
+    return result.status === 0;
   } catch {
     return false;
   }
 }
 
-/** Find a command on PATH, return its path or null. */
-function findOnPath(name) {
-  try {
-    const cmd   = process.platform === 'win32' ? 'where' : 'which';
-    const result = execFileSync(cmd, [name], { stdio: 'pipe', timeout: 8000 })
-      .toString()
-      .trim()
-      .split('\n')[0] // `where` may return multiple lines on Windows
-      .trim();
-    return result || null;
-  } catch {
-    return null;
-  }
-}
-
-/** Run a command, streaming output to the terminal. Returns true on success. */
-function run(cmd, args) {
-  const result = spawnSync(cmd, args, {
-    stdio: 'inherit',
-    timeout: 180_000, // 3 minutes — uv may need to download Python
-  });
-  return result.status === 0;
-}
-
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 try {
-  // Escape hatch for CI / advanced users
   if (process.env.AMPLIFIER_SKIP_POSTINSTALL) {
     process.exit(0);
   }
 
-  // 1. Already installed?
-  const existing = process.env.AMPLIFIER_BINARY || findOnPath('amplifier');
-  if (existing) {
-    ok(`Amplifier CLI found at ${existing}`);
-    process.exit(0);
-  }
+  let issues = 0;
 
-  log('Amplifier CLI not found — attempting auto-install...');
-
-  // 2. Try uv (recommended — manages Python itself, no Python prereq)
-  if (available('uv')) {
-    log('  uv found → running: uv tool install amplifier');
-    if (run('uv', ['tool', 'install', 'amplifier'])) {
-      ok('Amplifier installed via uv');
-      warn('If `amplifier` is not found in a new shell, run: uv tool update-shell');
-      process.exit(0);
+  // 1. Python >= 3.11
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+  const pyResult = checkCommand(pythonCmd, ['--version'], 'Python');
+  if (!pyResult.success) {
+    fail(`Python 3.11+ not found. Install from https://python.org or: curl -LsSf https://astral.sh/uv/install.sh | sh`);
+    issues++;
+  } else {
+    // Check version >= 3.11
+    const match = /(\d+)\.(\d+)/.exec(pyResult.output);
+    if (match) {
+      const major = parseInt(match[1], 10);
+      const minor = parseInt(match[2], 10);
+      if (major < 3 || (major === 3 && minor < 11)) {
+        warn(`Python ${pyResult.output} found but 3.11+ is required`);
+        issues++;
+      }
     }
-    warn('uv install failed — trying pip...');
   }
 
-  // 3. Try pip3 / pip
-  const pip = available('pip3') ? 'pip3' : available('pip') ? 'pip' : null;
-  if (pip) {
-    log(`  ${pip} found → running: ${pip} install amplifier-core`);
-    if (run(pip, ['install', 'amplifier-core'])) {
-      ok('amplifier-core installed via pip');
-      process.exit(0);
+  // 2. amplifier-foundation
+  if (pyResult.success) {
+    if (checkPythonImport(pythonCmd, 'amplifier_foundation')) {
+      ok('amplifier-foundation: installed');
+    } else {
+      warn('amplifier-foundation not found. Install: uv tool install amplifier');
+      issues++;
     }
-    warn('pip install failed.');
+
+    // 3. amplifier-core
+    if (checkPythonImport(pythonCmd, 'amplifier_core')) {
+      ok('amplifier-core: installed');
+    } else {
+      warn('amplifier-core not found. Install: uv tool install amplifier');
+      issues++;
+    }
   }
 
-  // 4. Nothing worked — print friendly instructions
-  console.log('');
-  console.log(`${PREFIX}: ${YELLOW}Could not auto-install the Amplifier CLI.${RESET}`);
-  console.log('  Install it manually, then re-run your script:');
-  console.log('');
-  console.log('    # Recommended (installs Python + amplifier automatically):');
-  console.log('    curl -LsSf https://astral.sh/uv/install.sh | sh');
-  console.log('    uv tool install amplifier');
-  console.log('');
-  console.log('    # Or with pip:');
-  console.log('    pip install amplifier-core');
-  console.log('');
-  console.log('  Full docs: https://github.com/microsoft/amplifier');
-  console.log('');
+  // 4. git
+  const gitResult = checkCommand('git', ['--version'], 'git');
+  if (!gitResult.success) {
+    warn('git not found. Required for bundle module resolution.');
+    issues++;
+  }
 
+  if (issues > 0) {
+    console.log('');
+    console.log(`${PREFIX}: ${YELLOW}${issues} prerequisite(s) missing.${RESET}`);
+    console.log('  Recommended install:');
+    console.log('    curl -LsSf https://astral.sh/uv/install.sh | sh');
+    console.log('    uv tool install amplifier');
+    console.log('');
+  }
 } catch (err) {
   // Never block npm install
   warn(`postinstall skipped: ${err.message}`);

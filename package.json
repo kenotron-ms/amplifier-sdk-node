@@ -1,6 +1,6 @@
 {
   "name": "amplifier-sdk",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Official Node.js SDK for Amplifier — call AI agents from your code with a typed TypeScript API",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -50,15 +50,5 @@
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^4.0.0"
-  },
-  "optionalDependencies": {
-    "@amplifier/sdk-darwin-arm64": "0.1.0",
-    "@amplifier/sdk-darwin-x64": "0.1.0",
-    "@amplifier/sdk-linux-x64": "0.1.0",
-    "@amplifier/sdk-linux-arm64": "0.1.0",
-    "@amplifier/sdk-win32-x64": "0.1.0"
-  },
-  "workspaces": [
-    "packages/@amplifier/*"
-  ]
+  }
 }

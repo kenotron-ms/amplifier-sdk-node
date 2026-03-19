@@ -1,6 +1,6 @@
 # amplifier-sdk
 
-The official Node.js SDK for [Amplifier](https://github.com/amplifier-dev/amplifier) — call AI agents from your code with a typed TypeScript API.
+A Node.js SDK for [Amplifier](https://github.com/amplifier-dev/amplifier) — call AI agents from your code with a typed TypeScript API.
 
 ## Install
 

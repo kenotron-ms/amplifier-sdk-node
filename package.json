@@ -1,7 +1,7 @@
 {
   "name": "amplifier-sdk",
   "version": "1.0.0",
-  "description": "Official Node.js SDK for Amplifier — call AI agents from your code with a typed TypeScript API",
+  "description": "Node.js SDK for Amplifier — call AI agents from your code with a typed TypeScript API",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
